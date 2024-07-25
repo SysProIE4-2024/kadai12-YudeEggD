@@ -11,6 +11,9 @@
 #define MAXLINE 1000                            // コマンド行の最大文字数
 #define MAXARGS 60                              // コマンド行文字列の最大数
 
+char *ofile;                                    // 出力リダイレクトファイル名
+char *ifile;                                    // 入力リダイレクトファイル名
+
 int parse(char *p, char *args[]) {              // コマンド行を解析する
   int i=0;                                      // 解析後文字列の数
   for (;;) {
@@ -26,14 +29,18 @@ int parse(char *p, char *args[]) {              // コマンド行を解析す�
 void cdCom(char *args[]) {                      // cd コマンドを実行する
   if (args[1]==NULL || args[2]!=NULL) {         //   引数を確認して
     fprintf(stderr,"Usage: cd DIR\n");          //     過不足ありなら使い方表示
+  } else if (ifile != NULL || ofile != NULL) {  //   redirectは使用不可
+    fprintf(stderr,"Can't use redirect\n");     
   } else if (chdir(args[1])<0) {                //   親プロセスが chdir する
     perror(args[1]);                            //     chdirに失敗したらperror
-  }
+  } 
 }
 
 void setenvCom(char *args[]) {                  // setenv コマンドを実行する
   if (args[1]==NULL || args[2]==NULL || args[3]!=NULL) {   // 引数を確認して
     fprintf(stderr,"Usage: setenv NAME VAL\n"); //   過不足ありなら使い方表示
+  } else if (ifile != NULL || ofile != NULL) {  //   redirectは使用不可
+    fprintf(stderr,"Can't use redirect\n");     
   } else if (setenv(args[1], args[2], 1)<0) {   //   親プロセスがsetenvする
     perror(args[1]);                            //     setenvに失敗したらperror
   }
@@ -42,13 +49,12 @@ void setenvCom(char *args[]) {                  // setenv コマンドを実行�
 void unsetenvCom(char *args[]) {                // unsetenv コマンドを実行する
   if (args[1]==NULL || args[2]!=NULL) {         //   引数を確認して
     fprintf(stderr,"Usage: unsetenv NAME\n");   //     過不足ありなら使い方表示
+  } else if (ifile != NULL || ofile != NULL) {  //   redirectは使用不可
+    fprintf(stderr,"Can't use redirect\n");     
   } else if (unsetenv(args[1])<0) {             //   親プロセスがunsetenvする
     perror(args[1]);                            //     unsetenvに失敗ならperror
   }
 }
-
-char *ofile;                                    // 出力リダイレクトファイル名
-char *ifile;                                    // 入力リダイレクトファイル名
 
 void findRedirect(char *args[]) {               // リダイレクトの指示を探す
   int i, j;
@@ -77,6 +83,11 @@ void redirect(int fd, char *path, int flag) {   // リダイレクト処理を�
   //        入力の場合 O_RDONLY
   //        出力の場合 O_WRONLY|O_TRUNC|O_CREAT
   //
+  close(fd);                                    // fdをclose
+  fd = open(path, flag, 0644);                  // リダイレクト先ファイルでopen
+  if (fd<0)                                    
+    perror(path);
+  exit(1);                                      // 親プロセスに戻る
 }
 
 void externalCom(char *args[]) {                // 外部コマンドを実行する
@@ -86,6 +97,10 @@ void externalCom(char *args[]) {                // 外部コマンドを実行�
     exit(1);                                    //     非常事態，親を終了
   }
   if (pid==0) {                                 //   子プロセスなら
+    if (ifile != NULL)                          //     ifileやofileが存在するなら
+      redirect(0, ifile, O_RDONLY);             //     リダイレクトしてから
+    else if(ofile != NULL)
+      redirect(1, ofile, O_WRONLY|O_TRUNC|O_CREAT);
     execvp(args[0], args);                      //     コマンドを実行
     perror(args[0]);
     exit(1);
@@ -124,9 +139,42 @@ int main() {
       fprintf(stderr, "引数が多すぎる\n");      //   文字列が多すぎる場合は
       continue;                                 //   ループの先頭に戻る
     }
+
     findRedirect(args);                         // リダイレクトの指示を見つける
     if (args[0]!=NULL) execute(args);           //   コマンドを実行する
   }
   return 0;
 }
+
+/*
+  実行結果
+
+  % make                            <-- コンパイルエラーなし
+  cc -D_GNU_SOURCE -Wall -std=c99 -o myshell myshell.c
+
+  % ./myshell
+  Command: cat a.txt                <-- 出力リダイレクト
+  cat: a.txt: No such file or directory   <-- a.txtが存在しない
+  Command: echo aaa > a.txt 
+  Command: cat a.txt                      <-- 新たに作成された
+  aaa
+  Command: echo bbb > a.txt               <-- 値を上書き
+  Command: cat a.txt      
+  bbb
+
+  Command: cat a.txt                <-- 入力リダイレクト
+  bbb
+  Command: cat < a.txt
+  bbb
+
+  Command: cat nafile               <-- 存在しないファイルで入力リダイレクト
+  cat: nafile: No such file or directory  
+  Command: cat < nafile
+  nafile: No such file or directory
+
+  Command: echo aiueo > w.txt       <-- 編集不可のファイルで出力リダイレクト
+  Command: chmod ugo-w w.txt
+  Command: cat aiueo > w.txt
+  w.txt: Permission denied
+*/
 
