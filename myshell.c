@@ -86,8 +86,8 @@ void redirect(int fd, char *path, int flag) {   // リダイレクト処理を�
   close(fd);                                    // fdをclose
   fd = open(path, flag, 0644);                  // リダイレクト先ファイルでopen
   if (fd<0) {
-    perror(path);                               // 親プロセスに戻る
-    exit(1);       
+    perror(path);                               
+    exit(1);                                    // 親プロセスに戻る
   }                                                                      
 }
 
