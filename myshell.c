@@ -100,7 +100,7 @@ void externalCom(char *args[]) {                // 外部コマンドを実行�
   if (pid==0) {                                 //   子プロセスなら
     if (ifile != NULL)                          //     ifileやofileが存在するなら
       redirect(0, ifile, O_RDONLY);             //     リダイレクトしてから
-    else if(ofile != NULL)
+    if (ofile != NULL)
       redirect(1, ofile, O_WRONLY|O_TRUNC|O_CREAT);
     execvp(args[0], args);                      //     コマンドを実行
     perror(args[0]);
@@ -177,5 +177,14 @@ int main() {
   Command: chmod ugo-w w.txt
   Command: cat aiueo > w.txt
   w.txt: Permission denied
+
+  Command: echo hhh > h.txt         <-- 入出力リダイレクトを同時に使用
+  Command: cat h.txt
+  hhh
+  Command: cat x.txt
+  cat: x.txt: No such file or directory
+  Command: cat < h.txt > x.txt
+  Command: cat x.txt
+  hhh
 */
 
